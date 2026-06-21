@@ -1,5 +1,4 @@
 import os
-from replit import db
 import config
 import requests
 import platform
@@ -7,19 +6,29 @@ from urllib3 import encode_multipart_formdata
 from datetime import datetime, timezone
 import helper
 
+# In-process session cache so we only re-authenticate when the session expires.
+_session_cache: dict[str, str] = {}
+
 
 class tradingview:
 
   def __init__(self):
-    print('Getting sessionid from db')
-    self.sessionid = db["sessionid"] if 'sessionid' in db.keys() else 'abcd'
+    # Prefer an explicit TV_SESSION_ID env var, then fall back to the
+    # in-process cache, then re-authenticate with tvusername/tvpassword.
+    env_session = os.environ.get('TV_SESSION_ID', '')
+    self.sessionid = env_session or _session_cache.get('sessionid', '')
 
-    headers = {'cookie': 'sessionid=' + self.sessionid}
-    test = requests.request("GET", config.urls["tvcoins"], headers=headers)
-    print(test.text)
-    print('sessionid from db : ' + self.sessionid)
-    if test.status_code != 200:
-      print('session id from db is invalid')
+    if self.sessionid:
+      print('Validating cached sessionid')
+      headers = {'cookie': 'sessionid=' + self.sessionid}
+      test = requests.request("GET", config.urls["tvcoins"], headers=headers)
+      print(test.text)
+      if test.status_code != 200:
+        print('Cached session id is invalid, re-authenticating')
+        self.sessionid = ''
+
+    if not self.sessionid:
+      print('Authenticating with username/password')
       username = os.environ['tvusername']
       password = os.environ['tvpassword']
 
@@ -39,7 +48,7 @@ class tradingview:
                             headers=login_headers)
       cookies = login.cookies.get_dict()
       self.sessionid = cookies["sessionid"]
-      db["sessionid"] = self.sessionid
+      _session_cache['sessionid'] = self.sessionid
 
   def validate_username(self, username):
     users = requests.get(config.urls["username_hint"] + "?s=" + username)
