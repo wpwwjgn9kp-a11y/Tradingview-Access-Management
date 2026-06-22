@@ -1,4 +1,4 @@
 [build]
-buildCommand = "poetry lock && poetry install --no-root"
+buildCommand = "poetry lock && poetry install --no-interaction --no-ansi --only main --no-root"
 
 [deploy]
